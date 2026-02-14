@@ -25,7 +25,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(app);
 
-// Metadata Bridge: Persist user roles and rooms linked to UIDs in LocalStorage
+// Metadata Bridge
 const getMetadata = () => JSON.parse(localStorage.getItem('user_metadata') || '{}');
 const saveMetadata = (uid: string, data: any) => {
   const meta = getMetadata();
@@ -33,7 +33,6 @@ const saveMetadata = (uid: string, data: any) => {
   localStorage.setItem('user_metadata', JSON.stringify(meta));
 };
 
-// Event emitter to simulate real-time listeners
 type Listener = (data: any) => void;
 const listeners: Record<string, Set<Listener>> = {};
 
@@ -49,7 +48,6 @@ const notify = (event: string, data: any) => {
   }
 };
 
-// Internal Store for Firestore (Mocked for now as requested)
 let complaints: Complaint[] = [
   {
     id: 'TKT-1001',
@@ -75,13 +73,10 @@ let settings: SystemSettings = {
   emailSignupEnabled: true
 };
 
-// Map Firebase User to App User type
 const mapFirebaseUser = (fbUser: FirebaseUser | null): User | null => {
   if (!fbUser) return null;
-  
   const email = fbUser.email || '';
   const meta = getMetadata()[fbUser.uid] || {};
-  
   let role: UserRole = meta.role || 'guest';
   if (email === 'admin@hotel.com') role = 'admin';
   else if (email === 'staff@hotel.com') role = 'staff';
@@ -116,12 +111,17 @@ export const mockFirebase = {
     logout: async () => {
       await signOut(firebaseAuth);
     },
+    resendVerification: async () => {
+      const user = firebaseAuth.currentUser;
+      if (user) {
+        await sendEmailVerification(user);
+      }
+    },
     createUser: async (userData: { email?: string; password?: string; name?: string; role?: UserRole; roomNumber?: string }) => {
       if (!userData.email) throw new Error('Email required');
       const password = userData.password || 'Temporary123!';
       const credential = await createUserWithEmailAndPassword(firebaseAuth, userData.email, password);
       
-      // Save extended metadata locally
       saveMetadata(credential.user.uid, { 
         role: userData.role || 'guest', 
         roomNumber: userData.roomNumber || '' 
@@ -131,13 +131,12 @@ export const mockFirebase = {
         await updateProfile(credential.user, { displayName: userData.name });
       }
 
-      // Send Verification Email
+      // Initial Verification
       await sendEmailVerification(credential.user);
-
-      // Sign Out immediately to prevent automatic login after registration
+      
+      // Keep them logged out until verified
       await signOut(firebaseAuth);
 
-      // Notify Admins of New Registration (Local event)
       mockFirebase.firestore.notifications.add({
         message: `New User Registration: ${userData.name || userData.email} (${userData.role || 'guest'})`,
         type: 'broadcast'
@@ -169,13 +168,11 @@ export const mockFirebase = {
         };
         complaints.unshift(newComplaint);
         notify('complaints', [...complaints]);
-        
         mockFirebase.firestore.notifications.add({
           message: `New complaint from Room ${newComplaint.roomNumber}`,
           complaintId: id,
           type: 'complaint'
         });
-        
         return id;
       },
       updateStatus: async (id: string, status: Complaint['status']) => {
@@ -240,7 +237,7 @@ export const mockFirebase = {
           roomNumber: meta[uid].roomNumber,
           createdAt: Date.now(),
           status: 'online',
-          emailVerified: false // Simplified for directory view
+          emailVerified: false
         }));
         cb(usersList);
         return subscribe('users', cb);

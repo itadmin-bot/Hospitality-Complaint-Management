@@ -42,25 +42,65 @@ const WelcomeScreen: React.FC<{ user: User, hotelName: string, onComplete: () =>
 };
 
 const VerificationScreen: React.FC<{ email: string }> = ({ email }) => {
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await mockFirebase.auth.resendVerification();
+      setResendCooldown(60);
+      alert('Verification email resent. Please check your spam folder.');
+    } catch (err: any) {
+      alert('Failed to resend. Please try again later.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900 px-4">
       <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center animate-fade-in">
         <div className="w-20 h-20 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: 'var(--brand-color-light)' }}>
            <svg className="w-10 h-10 text-brand" style={{ color: 'var(--brand-color)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 00-2 2z" />
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
            </svg>
         </div>
         <h2 className="text-2xl font-serif text-slate-800 mb-4">Verification Required</h2>
-        <p className="text-slate-600 text-sm mb-8 leading-relaxed">
-          We have sent you a verification email to <span className="font-bold text-slate-900">{email}</span>. Please verify it and log in.
+        <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+          We have sent a verification email to <span className="font-bold text-slate-900">{email}</span>.
         </p>
-        <button 
-          onClick={() => mockFirebase.auth.logout()}
-          style={{ backgroundColor: 'var(--brand-color)' }}
-          className="w-full text-white font-bold py-4 rounded-2xl shadow-xl hover:brightness-110 transition-all uppercase tracking-widest text-xs"
-        >
-          Login
-        </button>
+
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-8 flex items-start space-x-3 text-left">
+          <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <p className="text-[11px] text-amber-700 font-medium leading-normal">
+            <span className="font-bold block mb-0.5 uppercase tracking-wider">Email not arriving?</span>
+            Please check your <span className="underline decoration-amber-300">Junk or Spam folder</span> as your mail provider may have filtered our message.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <button 
+            onClick={() => mockFirebase.auth.logout()}
+            style={{ backgroundColor: 'var(--brand-color)' }}
+            className="w-full text-white font-bold py-4 rounded-2xl shadow-xl hover:brightness-110 transition-all uppercase tracking-widest text-xs"
+          >
+            Return to Login
+          </button>
+          <button 
+            onClick={handleResend}
+            disabled={resendCooldown > 0}
+            className="w-full text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px] py-2 transition-all disabled:opacity-50"
+          >
+            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend verification email'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -85,7 +125,6 @@ const PrivateRoute: React.FC<{ children: React.ReactNode, allowedRoles?: string[
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Block unverified users except for specific flows if needed, but here we block them entirely
   if (!currentUser.emailVerified) {
     return <VerificationScreen email={currentUser.email} />;
   }
@@ -131,7 +170,6 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (loggedInUser: User) => {
     setUser(loggedInUser);
-    // Only show welcome if the email is verified
     if (loggedInUser.emailVerified) {
       setShowWelcome(true);
     }

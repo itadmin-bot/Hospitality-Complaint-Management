@@ -19,19 +19,24 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState('');
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     const unsub = mockFirebase.firestore.settings.onSnapshot(setSettings);
-    
-    // Load remembered email
     const savedEmail = localStorage.getItem('remembered_email');
     if (savedEmail) {
       setEmail(savedEmail);
       setRememberMe(true);
     }
-
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,14 +69,11 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       } else {
         try {
           const user = await mockFirebase.auth.login(email, password);
-          
-          // Handle Remember Me
           if (rememberMe) {
             localStorage.setItem('remembered_email', email);
           } else {
             localStorage.removeItem('remembered_email');
           }
-
           onLoginSuccess(user);
         } catch (err: any) {
           if (
@@ -92,6 +94,17 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await mockFirebase.auth.resendVerification();
+      setResendCooldown(60);
+      alert('A new verification email has been sent. Please check your spam folder.');
+    } catch (err: any) {
+      setError('Failed to resend. Please try again later.');
+    }
+  };
+
   const hotelName = settings?.hotelName || 'Tidé Hotels and Resorts';
 
   if (verificationEmail) {
@@ -104,16 +117,36 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </svg>
           </div>
           <h2 className="text-2xl font-serif text-slate-800 mb-4">Verify Your Identity</h2>
-          <p className="text-slate-600 text-sm mb-8 leading-relaxed">
-            We have sent you a verification email to <span className="font-bold text-slate-900">{verificationEmail}</span>. Please verify it and log in.
+          <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+            We have sent a verification email to <span className="font-bold text-slate-900">{verificationEmail}</span>.
           </p>
-          <button 
-            onClick={() => setVerificationEmail(null)}
-            style={{ backgroundColor: 'var(--brand-color)' }}
-            className="w-full text-white font-bold py-4 rounded-2xl transition-all shadow-xl hover:brightness-110 uppercase tracking-widest text-xs"
-          >
-            Login
-          </button>
+          
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-8 flex items-start space-x-3 text-left">
+            <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <p className="text-[11px] text-amber-700 font-medium leading-normal">
+              <span className="font-bold block mb-0.5 uppercase tracking-wider">Email not arriving?</span>
+              Please check your <span className="underline decoration-amber-300">Junk or Spam folder</span> as your mail provider may have filtered our message.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <button 
+              onClick={() => setVerificationEmail(null)}
+              style={{ backgroundColor: 'var(--brand-color)' }}
+              className="w-full text-white font-bold py-4 rounded-2xl transition-all shadow-xl hover:brightness-110 uppercase tracking-widest text-xs"
+            >
+              Back to Login
+            </button>
+            <button 
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className="w-full text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px] py-2 transition-all disabled:opacity-50"
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend verification email'}
+            </button>
+          </div>
         </div>
       </div>
     );
