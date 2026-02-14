@@ -1,0 +1,8 @@
+{
+  "name": "Hospitality Complaint Management",
+  "description": "A high-end real-time complaint management system for hotels, featuring guest reporting, staff notifications, and a secure admin dashboard.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
