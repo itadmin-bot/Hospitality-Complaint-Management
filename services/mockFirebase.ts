@@ -124,17 +124,16 @@ export const mockFirebase = {
       
       saveMetadata(credential.user.uid, { 
         role: userData.role || 'guest', 
-        roomNumber: userData.roomNumber || '' 
+        roomNumber: userData.roomNumber || '',
+        name: userData.name || userData.email.split('@')[0],
+        email: userData.email
       });
 
       if (userData.name) {
         await updateProfile(credential.user, { displayName: userData.name });
       }
 
-      // Initial Verification
       await sendEmailVerification(credential.user);
-      
-      // Keep them logged out until verified
       await signOut(firebaseAuth);
 
       mockFirebase.firestore.notifications.add({
@@ -143,6 +142,10 @@ export const mockFirebase = {
       });
       
       return { email: userData.email } as any; 
+    },
+    hasAdmin: () => {
+      const meta = getMetadata();
+      return Object.values(meta).some((u: any) => u.role === 'admin' || u.email === 'admin@hotel.com');
     }
   },
   firestore: {

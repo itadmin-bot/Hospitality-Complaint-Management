@@ -10,6 +10,134 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { NotificationToast } from './components/NotificationToast';
 
 const ADMIN_URL = "/management-tide-38SOWE-secure-admin";
+const ADMIN_SECRET = "TIDE-ADMIN-KEY-2026";
+
+const AdminAuthWrapper: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [error, setError] = useState('');
+  const [authProcessing, setAuthProcessing] = useState(false);
+
+  useEffect(() => {
+    const unsub = mockFirebase.auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const handleAdminAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setAuthProcessing(true);
+
+    try {
+      if (isRegistering) {
+        if (secretKey !== ADMIN_SECRET) {
+          throw new Error('Invalid Admin Secret Key.');
+        }
+        await mockFirebase.auth.createUser({
+          email,
+          password,
+          name,
+          role: 'admin'
+        });
+        alert('Admin account created! Please verify your email and then log in.');
+        setIsRegistering(false);
+      } else {
+        const user = await mockFirebase.auth.login(email, password);
+        if (user.role !== 'admin') {
+          await mockFirebase.auth.logout();
+          throw new Error('Access denied. You do not have administrative privileges.');
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed.');
+    } finally {
+      setAuthProcessing(false);
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="text-white animate-pulse font-serif text-xl">Authenticating Secure Link...</div>
+    </div>
+  );
+
+  if (currentUser && currentUser.role === 'admin') {
+    if (!currentUser.emailVerified) {
+      return <VerificationScreen email={currentUser.email} />;
+    }
+    return <AdminDashboard user={currentUser} />;
+  }
+
+  if (currentUser && currentUser.role !== 'admin') {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 border border-slate-200 animate-fade-in">
+        <div className="text-center mb-10">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-100">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          </div>
+          <h2 className="text-2xl font-serif text-slate-900">Admin Secure Access</h2>
+          <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-400 mt-2">
+            {isRegistering ? 'New Administrator Enrollment' : 'Management Portal Login'}
+          </p>
+        </div>
+
+        <form onSubmit={handleAdminAuth} className="space-y-4">
+          {isRegistering && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Full Name</label>
+              <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+          )}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Admin Email</label>
+            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Password</label>
+            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
+          </div>
+          {isRegistering && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Master Secret Key</label>
+              <input type="password" required value={secretKey} onChange={e => setSecretKey(e.target.value)} placeholder="TIDE-XXXX-XXXX" className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+          )}
+
+          {error && <div className="text-red-500 text-[10px] font-bold uppercase text-center p-2 bg-red-50 rounded-lg">{error}</div>}
+
+          <button 
+            type="submit" 
+            disabled={authProcessing}
+            className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-black transition-all shadow-xl uppercase tracking-widest text-xs disabled:opacity-50"
+          >
+            {authProcessing ? 'Verifying...' : (isRegistering ? 'Register Admin' : 'Enter Management')}
+          </button>
+        </form>
+
+        <div className="mt-8 text-center pt-8 border-t border-slate-50">
+          <button 
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="text-slate-400 hover:text-slate-900 text-[10px] font-bold uppercase tracking-widest transition-colors"
+          >
+            {isRegistering ? 'Back to Admin Login' : 'First time? Initialize Administrator'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const WelcomeScreen: React.FC<{ user: User, hotelName: string, onComplete: () => void }> = ({ user, hotelName, onComplete }) => {
   useEffect(() => {
@@ -210,11 +338,7 @@ const App: React.FC = () => {
           </PrivateRoute>
         } />
 
-        <Route path={ADMIN_URL} element={
-          <PrivateRoute allowedRoles={['admin']}>
-            {user && <AdminDashboard user={user} />}
-          </PrivateRoute>
-        } />
+        <Route path={ADMIN_URL} element={<AdminAuthWrapper />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
