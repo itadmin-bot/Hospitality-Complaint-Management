@@ -8,10 +8,9 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
-  sendPasswordResetEmail,
   User as FirebaseUser
 } from "firebase/auth";
-import { Complaint, User, Notification, Message, SystemSettings, UserRole, ActivityLog } from '../types';
+import { Complaint, User, Notification, Message, SystemSettings, UserRole } from '../types';
 
 // Firebase Config
 const firebaseConfig = {
@@ -26,17 +25,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(app);
 
-// Metadata Bridge (Persistent)
+// Metadata Bridge
 const getMetadata = () => JSON.parse(localStorage.getItem('user_metadata') || '{}');
 const saveMetadata = (uid: string, data: any) => {
   const meta = getMetadata();
   meta[uid] = { ...meta[uid], ...data };
   localStorage.setItem('user_metadata', JSON.stringify(meta));
 };
-
-// Activity Logs (In-memory for session but shared via listeners)
-let activityLogs: ActivityLog[] = JSON.parse(localStorage.getItem('activity_logs') || '[]');
-const saveLogs = () => localStorage.setItem('activity_logs', JSON.stringify(activityLogs));
 
 type Listener = (data: any) => void;
 const listeners: Record<string, Set<Listener>> = {};
@@ -51,14 +46,6 @@ const notify = (event: string, data: any) => {
   if (listeners[event]) {
     listeners[event].forEach(cb => cb(data));
   }
-};
-
-const logActivity = (log: Omit<ActivityLog, 'id'>) => {
-  const newLog = { ...log, id: Date.now().toString() };
-  activityLogs.unshift(newLog);
-  if (activityLogs.length > 100) activityLogs.pop(); // Cap at 100
-  saveLogs();
-  notify('activityLogs', [...activityLogs]);
 };
 
 let complaints: Complaint[] = [
@@ -96,35 +83,20 @@ const mapFirebaseUser = (fbUser: FirebaseUser | null): User | null => {
   
   return {
     id: fbUser.uid,
-    name: fbUser.displayName || meta.name || email.split('@')[0],
+    name: fbUser.displayName || email.split('@')[0],
     email: email,
     role: role,
     roomNumber: meta.roomNumber || '',
-    createdAt: meta.createdAt || Date.now(),
-    lastLoginAt: meta.lastLoginAt,
-    lastLogoutAt: meta.lastLogoutAt,
-    isOnline: !!meta.isOnline,
-    status: meta.isOnline ? 'online' : 'offline',
+    createdAt: Date.now(),
+    status: 'online',
     emailVerified: fbUser.emailVerified
   };
 };
-
-// Handle tab closing
-window.addEventListener('beforeunload', () => {
-  const user = firebaseAuth.currentUser;
-  if (user) {
-    saveMetadata(user.uid, { isOnline: false, lastLogoutAt: Date.now() });
-  }
-});
 
 export const mockFirebase = {
   auth: {
     onAuthStateChanged: (cb: (user: User | null) => void) => {
       return onAuthStateChanged(firebaseAuth, (fbUser) => {
-        if (fbUser) {
-           // We don't automatically mark online here to avoid double-logging on every refresh
-           // But we ensure metadata is mapped
-        }
         cb(mapFirebaseUser(fbUser));
       });
     },
@@ -134,39 +106,9 @@ export const mockFirebase = {
     login: async (email: string, password?: string) => {
       if (!password) throw new Error('Password required');
       const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      const user = credential.user;
-      
-      const now = Date.now();
-      saveMetadata(user.uid, { isOnline: true, lastLoginAt: now });
-      
-      const mappedUser = mapFirebaseUser(user)!;
-      logActivity({
-        userId: mappedUser.id,
-        userName: mappedUser.name,
-        userRole: mappedUser.role,
-        action: 'login',
-        timestamp: now,
-        details: `User logged in from portal.`
-      });
-
-      return mappedUser;
+      return mapFirebaseUser(credential.user) as User;
     },
     logout: async () => {
-      const fbUser = firebaseAuth.currentUser;
-      if (fbUser) {
-        const mappedUser = mapFirebaseUser(fbUser)!;
-        const now = Date.now();
-        saveMetadata(fbUser.uid, { isOnline: false, lastLogoutAt: now });
-        
-        logActivity({
-          userId: mappedUser.id,
-          userName: mappedUser.name,
-          userRole: mappedUser.role,
-          action: 'logout',
-          timestamp: now,
-          details: `User signed out of system.`
-        });
-      }
       await signOut(firebaseAuth);
     },
     resendVerification: async () => {
@@ -175,36 +117,21 @@ export const mockFirebase = {
         await sendEmailVerification(user);
       }
     },
-    resetPassword: async (email: string) => {
-      await sendPasswordResetEmail(firebaseAuth, email);
-    },
     createUser: async (userData: { email?: string; password?: string; name?: string; role?: UserRole; roomNumber?: string }) => {
       if (!userData.email) throw new Error('Email required');
       const password = userData.password || 'Temporary123!';
       const credential = await createUserWithEmailAndPassword(firebaseAuth, userData.email, password);
-      const now = Date.now();
-
+      
       saveMetadata(credential.user.uid, { 
         role: userData.role || 'guest', 
         roomNumber: userData.roomNumber || '',
         name: userData.name || userData.email.split('@')[0],
-        email: userData.email,
-        createdAt: now,
-        isOnline: false
+        email: userData.email
       });
 
       if (userData.name) {
         await updateProfile(credential.user, { displayName: userData.name });
       }
-
-      logActivity({
-        userId: credential.user.uid,
-        userName: userData.name || userData.email.split('@')[0],
-        userRole: userData.role || 'guest',
-        action: 'register',
-        timestamp: now,
-        details: `New ${userData.role || 'guest'} account established.`
-      });
 
       await sendEmailVerification(credential.user);
       await signOut(firebaseAuth);
@@ -222,12 +149,6 @@ export const mockFirebase = {
     }
   },
   firestore: {
-    activityLogs: {
-      onSnapshot: (cb: (data: ActivityLog[]) => void) => {
-        cb([...activityLogs]);
-        return subscribe('activityLogs', cb);
-      }
-    },
     complaints: {
       onSnapshot: (cb: (data: Complaint[]) => void) => {
         cb([...complaints]);
@@ -235,7 +156,6 @@ export const mockFirebase = {
       },
       add: async (data: Partial<Complaint>) => {
         const id = `TKT-${Math.floor(Math.random() * 10000)}`;
-        const now = Date.now();
         const newComplaint: Complaint = {
           id,
           roomNumber: data.roomNumber || '000',
@@ -243,7 +163,7 @@ export const mockFirebase = {
           message: data.message || '',
           status: 'submitted',
           priority: data.priority || 'medium',
-          createdAt: now,
+          createdAt: Date.now(),
           createdBy: data.createdBy || 'anon',
           responses: [],
           mediaUrl: data.mediaUrl,
@@ -251,19 +171,6 @@ export const mockFirebase = {
         };
         complaints.unshift(newComplaint);
         notify('complaints', [...complaints]);
-        
-        const currentUser = mockFirebase.auth.getCurrentUser();
-        if (currentUser) {
-          logActivity({
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userRole: currentUser.role,
-            action: 'complaint_submitted',
-            timestamp: now,
-            details: `Submitted ticket ${id} regarding: ${newComplaint.message.substring(0, 20)}...`
-          });
-        }
-
         mockFirebase.firestore.notifications.add({
           message: `New complaint from Room ${newComplaint.roomNumber}`,
           complaintId: id,
@@ -274,32 +181,19 @@ export const mockFirebase = {
       updateStatus: async (id: string, status: Complaint['status']) => {
         complaints = complaints.map(c => c.id === id ? { ...c, status } : c);
         notify('complaints', [...complaints]);
-
-        const currentUser = mockFirebase.auth.getCurrentUser();
-        if (currentUser) {
-          logActivity({
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userRole: currentUser.role,
-            action: 'status_updated',
-            timestamp: Date.now(),
-            details: `Updated ticket ${id} status to ${status}.`
-          });
-        }
       },
       delete: async (id: string) => {
         complaints = complaints.filter(c => c.id !== id);
         notify('complaints', [...complaints]);
       },
       addResponse: async (complaintId: string, message: Partial<Message>) => {
-        const now = Date.now();
         const newMessage: Message = {
-          id: now.toString(),
+          id: Date.now().toString(),
           senderId: message.senderId || 'system',
           senderName: message.senderName || 'Staff',
           senderRole: message.senderRole || 'staff',
           text: message.text || '',
-          timestamp: now
+          timestamp: Date.now()
         };
         complaints = complaints.map(c => {
           if (c.id === complaintId) {
@@ -308,16 +202,6 @@ export const mockFirebase = {
           return c;
         });
         notify('complaints', [...complaints]);
-
-        logActivity({
-          userId: newMessage.senderId,
-          userName: newMessage.senderName,
-          userRole: newMessage.senderRole,
-          action: 'reply_sent',
-          timestamp: now,
-          details: `Responded to ticket ${complaintId}.`
-        });
-
         return newMessage;
       }
     },
@@ -347,29 +231,25 @@ export const mockFirebase = {
     },
     users: {
       onSnapshot: (cb: (data: User[]) => void) => {
-        const fetchUsers = () => {
-          const meta = getMetadata();
-          return Object.keys(meta).map(uid => ({
-            id: uid,
-            name: meta[uid].name || meta[uid].email?.split('@')[0] || 'Unknown User',
-            email: meta[uid].email || '',
-            role: meta[uid].role,
-            roomNumber: meta[uid].roomNumber,
-            createdAt: meta[uid].createdAt || Date.now(),
-            lastLoginAt: meta[uid].lastLoginAt,
-            lastLogoutAt: meta[uid].lastLogoutAt,
-            isOnline: !!meta[uid].isOnline,
-            status: meta[uid].isOnline ? 'online' : 'offline',
-            emailVerified: true // Assume verified for directory
-          } as User));
-        };
-        cb(fetchUsers());
-        return subscribe('users', () => cb(fetchUsers()));
+        const meta = getMetadata();
+        const usersList: User[] = Object.keys(meta).map(uid => ({
+          id: uid,
+          name: meta[uid].name || 'Hotel Guest',
+          email: meta[uid].email || 'guest@user.com',
+          role: meta[uid].role,
+          roomNumber: meta[uid].roomNumber,
+          createdAt: Date.now(),
+          status: 'online',
+          emailVerified: false
+        }));
+        cb(usersList);
+        return subscribe('users', cb);
       },
       update: async (userId: string, data: Partial<User>) => {
         saveMetadata(userId, data);
         notify('users', []); 
-      }
+      },
+      updateStatus: async (userId: string, status: 'online' | 'offline') => {}
     },
     settings: {
       onSnapshot: (cb: (data: SystemSettings) => void) => {
