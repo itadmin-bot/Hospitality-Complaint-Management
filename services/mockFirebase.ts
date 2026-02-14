@@ -8,6 +8,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from "firebase/auth";
 import { Complaint, User, Notification, Message, SystemSettings, UserRole, ActivityLog } from '../types';
@@ -173,6 +174,9 @@ export const mockFirebase = {
       if (user) {
         await sendEmailVerification(user);
       }
+    },
+    resetPassword: async (email: string) => {
+      await sendPasswordResetEmail(firebaseAuth, email);
     },
     createUser: async (userData: { email?: string; password?: string; name?: string; role?: UserRole; roomNumber?: string }) => {
       if (!userData.email) throw new Error('Email required');

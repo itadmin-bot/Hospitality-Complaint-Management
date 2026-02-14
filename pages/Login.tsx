@@ -9,6 +9,7 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,6 +18,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -42,8 +44,19 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     try {
+      if (isForgotPassword) {
+        try {
+          await mockFirebase.auth.resetPassword(email);
+          setSuccess('If this email is registered, a password reset link has been sent to your inbox.');
+        } catch (err: any) {
+          setError(err.message || 'Failed to send reset email.');
+        }
+        return;
+      }
+
       if (isSignUp) {
         if (password !== confirmPassword) {
           setError('Passwords do not match.');
@@ -167,7 +180,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           <div className="text-center mb-10">
             <h1 className="text-4xl font-serif text-slate-800 mb-2">{hotelName}</h1>
             <p className="text-slate-400 text-[10px] uppercase tracking-[0.3em] font-bold">
-              {isSignUp ? 'Establish Membership' : 'Guest Access Portal'}
+              {isSignUp ? 'Establish Membership' : isForgotPassword ? 'Recover Credentials' : 'Guest Access Portal'}
             </p>
           </div>
 
@@ -211,53 +224,73 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Password</label>
-                <input 
-                  type="password" 
-                  required 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--brand-color)] transition-all font-medium text-slate-700"
-                />
-              </div>
-              
-              {isSignUp && (
-                <div className="animate-fade-in">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Confirm Password</label>
+            {!isForgotPassword && (
+              <div className="grid grid-cols-1 gap-5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Password</label>
                   <input 
                     type="password" 
                     required 
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--brand-color)] transition-all font-medium text-slate-700"
                   />
                 </div>
-              )}
-            </div>
+                
+                {isSignUp && (
+                  <div className="animate-fade-in">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Confirm Password</label>
+                    <input 
+                      type="password" 
+                      required 
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-5 py-3.5 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--brand-color)] transition-all font-medium text-slate-700"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
-            {!isSignUp && (
-              <div className="flex items-center space-x-2 animate-fade-in">
-                <input 
-                  type="checkbox" 
-                  id="rememberMe"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand accent-brand cursor-pointer"
-                  style={{ '--tw-ring-color': 'var(--brand-color)' } as any}
-                />
-                <label htmlFor="rememberMe" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer select-none">
-                  Remember me
-                </label>
+            {!isSignUp && !isForgotPassword && (
+              <div className="flex items-center justify-between animate-fade-in">
+                <div className="flex items-center space-x-2">
+                  <input 
+                    type="checkbox" 
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand accent-brand cursor-pointer"
+                    style={{ '--tw-ring-color': 'var(--brand-color)' } as any}
+                  />
+                  <label htmlFor="rememberMe" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer select-none">
+                    Remember me
+                  </label>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsForgotPassword(true);
+                    setError('');
+                  }}
+                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+                >
+                  Forgot Password?
+                </button>
               </div>
             )}
 
             {error && (
               <div className="bg-red-50 text-red-600 text-[11px] font-bold p-4 rounded-xl border border-red-100 uppercase tracking-wider text-center">
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-green-50 text-green-600 text-[11px] font-bold p-4 rounded-xl border border-green-100 uppercase tracking-wider text-center">
+                {success}
               </div>
             )}
 
@@ -275,23 +308,35 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   </svg>
                   Processing...
                 </div>
-              ) : (isSignUp ? 'Create Membership' : 'Request Access')}
+              ) : (isSignUp ? 'Create Membership' : isForgotPassword ? 'Send Reset Link' : 'Request Access')}
             </button>
           </form>
 
-          {settings?.emailSignupEnabled && (
-            <div className="mt-8 pt-8 border-t border-slate-50 text-center">
+          <div className="mt-8 pt-8 border-t border-slate-50 text-center">
+            {isForgotPassword ? (
+              <button 
+                onClick={() => {
+                  setIsForgotPassword(false);
+                  setError('');
+                  setSuccess('');
+                }}
+                className="text-slate-400 hover:text-slate-600 text-[10px] font-bold uppercase tracking-widest transition-colors"
+              >
+                Back to Login
+              </button>
+            ) : settings?.emailSignupEnabled && (
               <button 
                 onClick={() => {
                   setIsSignUp(!isSignUp);
                   setError('');
+                  setSuccess('');
                 }}
                 className="text-slate-400 hover:text-slate-600 text-[10px] font-bold uppercase tracking-widest transition-colors"
               >
                 {isSignUp ? 'Already a member? Sign In' : 'New to our residence? Sign Up'}
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="mt-8 text-center">
             <div className="text-slate-300 text-[9px] uppercase tracking-[0.4em]">

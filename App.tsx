@@ -16,11 +16,13 @@ const AdminAuthWrapper: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [authProcessing, setAuthProcessing] = useState(false);
 
   useEffect(() => {
@@ -34,9 +36,20 @@ const AdminAuthWrapper: React.FC = () => {
   const handleAdminAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setAuthProcessing(true);
 
     try {
+      if (isForgotPassword) {
+        try {
+          await mockFirebase.auth.resetPassword(email);
+          setSuccess('If this email is registered, a password reset link has been sent to your inbox.');
+        } catch (err: any) {
+          setError(err.message || 'Failed to send reset email.');
+        }
+        return;
+      }
+
       if (isRegistering) {
         if (secretKey !== ADMIN_SECRET) {
           throw new Error('Invalid Admin Secret Key.');
@@ -89,7 +102,7 @@ const AdminAuthWrapper: React.FC = () => {
           </div>
           <h2 className="text-2xl font-serif text-slate-900">Admin Secure Access</h2>
           <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-400 mt-2">
-            {isRegistering ? 'New Administrator Enrollment' : 'Management Portal Login'}
+            {isRegistering ? 'New Administrator Enrollment' : isForgotPassword ? 'Recover Credentials' : 'Management Portal Login'}
           </p>
         </div>
 
@@ -104,10 +117,12 @@ const AdminAuthWrapper: React.FC = () => {
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Admin Email</label>
             <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
           </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Password</label>
-            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
-          </div>
+          {!isForgotPassword && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Password</label>
+              <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-slate-900" />
+            </div>
+          )}
           {isRegistering && (
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Master Secret Key</label>
@@ -115,24 +130,57 @@ const AdminAuthWrapper: React.FC = () => {
             </div>
           )}
 
+          {!isRegistering && !isForgotPassword && (
+            <div className="flex justify-end">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setIsForgotPassword(true);
+                  setError('');
+                }}
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
+
           {error && <div className="text-red-500 text-[10px] font-bold uppercase text-center p-2 bg-red-50 rounded-lg">{error}</div>}
+          {success && <div className="text-green-500 text-[10px] font-bold uppercase text-center p-2 bg-green-50 rounded-lg">{success}</div>}
 
           <button 
             type="submit" 
             disabled={authProcessing}
             className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-black transition-all shadow-xl uppercase tracking-widest text-xs disabled:opacity-50"
           >
-            {authProcessing ? 'Verifying...' : (isRegistering ? 'Register Admin' : 'Enter Management')}
+            {authProcessing ? 'Verifying...' : (isRegistering ? 'Register Admin' : isForgotPassword ? 'Send Reset Link' : 'Enter Management')}
           </button>
         </form>
 
         <div className="mt-8 text-center pt-8 border-t border-slate-50">
-          <button 
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="text-slate-400 hover:text-slate-900 text-[10px] font-bold uppercase tracking-widest transition-colors"
-          >
-            {isRegistering ? 'Back to Admin Login' : 'First time? Initialize Administrator'}
-          </button>
+          {isForgotPassword ? (
+            <button 
+              onClick={() => {
+                setIsForgotPassword(false);
+                setError('');
+                setSuccess('');
+              }}
+              className="text-slate-400 hover:text-slate-900 text-[10px] font-bold uppercase tracking-widest transition-colors"
+            >
+              Back to Login
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setError('');
+                setSuccess('');
+              }}
+              className="text-slate-400 hover:text-slate-900 text-[10px] font-bold uppercase tracking-widest transition-colors"
+            >
+              {isRegistering ? 'Back to Admin Login' : 'First time? Initialize Administrator'}
+            </button>
+          )}
         </div>
       </div>
     </div>
