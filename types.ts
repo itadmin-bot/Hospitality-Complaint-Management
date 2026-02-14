@@ -8,6 +8,9 @@ export interface User {
   role: UserRole;
   roomNumber?: string;
   createdAt: number;
+  lastLoginAt?: number;
+  lastLogoutAt?: number;
+  isOnline: boolean;
   status: 'online' | 'offline';
   emailVerified: boolean;
 }
@@ -46,6 +49,16 @@ export interface Notification {
   type: 'complaint' | 'reply' | 'broadcast';
   read: boolean;
   createdAt: number;
+}
+
+export interface ActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  action: 'register' | 'login' | 'logout' | 'complaint_submitted' | 'status_updated' | 'reply_sent';
+  timestamp: number;
+  details: string;
 }
 
 export interface SystemSettings {
